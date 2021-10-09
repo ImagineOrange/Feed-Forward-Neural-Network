@@ -70,6 +70,9 @@ def draw_output(epochs,minibatch,learning_rate): #Draw network, give stats
     X = fetch_MNIST("http://yann.lecun.com/exdb/mnist/train-images-idx3-ubyte.gz")[0x10:].reshape((-1,784)) 
     y = fetch_MNIST("http://yann.lecun.com/exdb/mnist/train-labels-idx1-ubyte.gz")[8:]      
 
+
+#This is a really cool network drawing function written by Colin Raffel 
+#https://gist.github.com/craffel/2d727968c3aaebd10359
 def draw_neural_net(left, right, bottom, top, layer_sizes):
     '''
     Draw a neural network cartoon using matplotilb.
