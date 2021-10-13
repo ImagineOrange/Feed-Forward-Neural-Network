@@ -37,11 +37,11 @@ def visualize_digits(X,y,predictions,accuracy): #visualize some digits
         for col in range(ax.shape[1]):
             ax[row,col].imshow(X[counter],aspect='equal')
             plt.setp(plt.gcf().get_axes(), xticks=[], yticks=[]);
-            ax[row,col].set_title(f"Label: {y[counter]} - Predicted: {predictions[counter]}",fontsize=9,fontweight='bold')
+            ax[row,col].set_title(f"Label: {y[counter]} - Predicted: {predictions[counter]}",fontsize=9)
             counter+=1      
-    plt.suptitle(f"Sample Classifications from Final Training Minibatch --- Final Accuracy: {100*round(accuracy,2)}%")
+    plt.suptitle(f"Sample Classifications from Test Dataset --- Final Test Accuracy: {100*round(accuracy,2)}%")
 
-def progress_bar(i,ceiling,loss,accuracy,key):
+def progress_bar(i,ceiling,train_accuracy,test_accuracy):
       barlength=25
       percentage = int(i/ceiling * 100) + 1
       num_hash = int(percentage/100 * barlength)
@@ -49,26 +49,25 @@ def progress_bar(i,ceiling,loss,accuracy,key):
       tally = '#' * num_hash
       space = '_' * num_space
     
-      if key == 'backprop':
-        sys.stdout.write(
-            f"\rTraining Progress: [{tally}{space}] {round(percentage,5)}% - ({i}/{ceiling}) - " 
-            f"accuracy: {round(accuracy * 100,4)} %       "
-            )
+      sys.stdout.write(
+        f"\rTraining Progress: [{tally}{space}] {round(percentage,5)}% - ({i}/{ceiling}) - " 
+        f"batch acc: {round(train_accuracy * 100,4)} % --- "
+        f"val acc: {round(test_accuracy * 100,4)} %  ")
 
 def draw_output(epochs,minibatch,learning_rate): #Draw network, give stats
     print("\n\nThis FFNN is chugging along to classify handwritten digits of the MNIST dataset. \
            \ndataset source: http://yann.lecun.com/exdb/mnist/ \
-           \n\nFeed-forward Network Shape: 12 x 16 x 16 x 10 neurons: \n")
-    print("Input        ···"+26*'x'+"···          784 features (pixels per img)")
-    print("Hidden 1               "+12*'*'+"                    784 inputs, 12 neurons")
-    print("Hidden 2     "+8*' '+16*'*'+12*" "+"       12 inputs, 16 neurons"+"")
-    print("Hidden 3     "+8*' '+16*'*'+12*" "+"       16 inputs, 16 neurons"+"")
-    print("Output       "+11*' '+10*'*'+15*' '+"       16 inputs, 10 neurons\n\
-        \nepochs =", epochs, ", minibatch size =", minibatch, ", learning_rate =",learning_rate,"\n")
+           \n\nFeed-forward Network Shape: 784 x 128 x 64 x 10 neurons: \n")
+    print("Input        ···"+26*'x'+"···         784 features (pixels per img)")
+    print("Hidden 1     "+6*' '+20*'*'+12*" "+"   784 inputs, 128 neurons"+"")
+    print("Hidden 2               "+12*'*'+"                   128 inputs, 64 neurons")
+    print("Output       "+13*' '+6*'*'+15*' '+"        64 inputs, 10 neurons\n\
+        \nepochs =", epochs, ", batch size =",minibatch, ", learning_rate =",learning_rate,"\n")
+    print("Training Algorithm: Batch Gradient Descent")
         
     #Fetch training data --- reshape to row vectors for each digit
     X = fetch_MNIST("http://yann.lecun.com/exdb/mnist/train-images-idx3-ubyte.gz")[0x10:].reshape((-1,784)) 
-    y = fetch_MNIST("http://yann.lecun.com/exdb/mnist/train-labels-idx1-ubyte.gz")[8:]      
+    y = fetch_MNIST("http://yann.lecun.com/exdb/mnist/train-labels-idx1-ubyte.gz")[8:]     
 
 
 #This is a really cool network drawing function written by Colin Raffel 
@@ -91,8 +90,8 @@ def draw_neural_net(left, right, bottom, top, layer_sizes):
         - layer_sizes : list of int
             List of layer sizes, including input and output dimensionality
     '''
-    fig = plt.figure(figsize=(8, 4))
-    fig.suptitle("12 x 16 x 16 x 10")
+    fig = plt.figure(figsize=(12, 7))
+    fig.suptitle("  128 x 64 x 10")
     ax = fig.gca()
     ax.axis('off')
     n_layers = len(layer_sizes)
@@ -112,8 +111,11 @@ def draw_neural_net(left, right, bottom, top, layer_sizes):
         for m in range(layer_size_a):
             for o in range(layer_size_b):
                 line = plt.Line2D([n*h_spacing + left, (n + 1)*h_spacing + left],
-                                  [layer_top_a - m*v_spacing, layer_top_b - o*v_spacing], c='k',linewidth = .3)
+                                  [layer_top_a - m*v_spacing, layer_top_b - o*v_spacing], c='k',linewidth = .04)
                 ax.add_artist(line)
+
+def normalize(X):
+    return X / 255
 
 #Fullly connected layer
 class Layer_Dense: 
@@ -255,69 +257,67 @@ class Stochastic_Gradient_Descent:
         layer.weights += -self.learning_rate * layer.dweights #multiply learning rate by final layer gradients
         layer.biases += -self.learning_rate * layer.dbiases 
 
-
     #################### - FFNN model and Training below - ####################
 
-
-def naive_backprop(X,y,epochs,minibatch,learning_rate): #at this point, we are not splitting data into train/test
-    
-    #Draw network in terminal, give stats
+def minibatch_GD(X_train,y_train,X_test,y_test,epochs,minibatch,learning_rate): #at this point, we are not splitting data into train/test
+    #draw console output
     draw_output(epochs,minibatch,learning_rate)
+
     #Shuffle Dataset
-    randomize = np.arange(len(X))
+    randomize = np.arange(len(X_train))
     np.random.shuffle(randomize)
-    X = X[randomize]
-    y = y[randomize]
+    X_train = X_train[randomize]
+    y_train = y_train[randomize]
+    #X_train = normalize(X_train)
+
+    randomize = np.arange(len(X_test))
+    np.random.shuffle(randomize)
+    X_test = X_test[randomize]
+    y_test = y_test[randomize]
+    #X_test = normalize(X_test)
 
     #init model layers
-    input_layer = Layer_Dense(784,12) #input layer
-    hidden_layer = Layer_Dense(12,16) #hidden layer
-    hidden_layer2 = Layer_Dense(16,16) #hidden layer
-    output_layer = Layer_Dense(16,10) #output layer
+    input_layer = Layer_Dense(784,128) #input layer (first hidden)
+    hidden_layer = Layer_Dense(128,64) #second hidden layer
+    output_layer = Layer_Dense(64,10) #output layer
     
     #init model activations
     input_activation = Activation_ReLU() 
     hidden_activation = Activation_ReLU()
-    hidden_activation2 = Activation_ReLU()
     output_activation = Activation_Softmax_Loss_CategoricalCrossentropy()
    
     #init model optimizer function
     optimizer = Stochastic_Gradient_Descent(learning_rate) #SGD - learning rate
-
-    #for plotting
-    loss_ = []
-    accuracy_ = []
-    epochs_ = []
     
+    #training----------------------------------------------------------------------------------
+
+    training_accuracy = []
+    testing_accuracy = []
+
     for epoch in range(epochs): #training loop for SGD 
         
         #select random rows of digit matrix
-        number_of_rows = X.shape[0]
+        number_of_rows = X_train.shape[0]
         random_indices = np.random.choice(number_of_rows, size=minibatch, replace=False)
 
         #compute mini-batches for Gradient Descent
-        X = X[random_indices,:] 
-        y = y[random_indices]
+        X_train = X_train[random_indices,:] 
+        y_train = y_train[random_indices]
 
         #forward pass
-        input_layer.forward_pass(X)  #forward pass input layer
+        input_layer.forward_pass(X_train)  #forward pass input layer
         input_activation.forward_pass(input_layer.output) #forward pass input activation
         hidden_layer.forward_pass(input_activation.output) #forward pass thru hidden
         hidden_activation.forward_pass(hidden_layer.output) #forward pass thru hidden activation
-        hidden_layer2.forward_pass(hidden_activation.output) #forward pass thru second hudden 
-        hidden_activation2.forward_pass(hidden_layer2.output)
-        output_layer.forward_pass(hidden_activation2.output) #forward pass thru output activation
+        output_layer.forward_pass(hidden_activation.output) #forward pass thru output activation
         
         #Calculate Loss
-        loss = output_activation.forward_pass(output_layer.output,y) #forward pass thru output layer
+        loss = output_activation.forward_pass(output_layer.output,y_train) #forward pass thru output layer
         
         #Backward pass
-        output_activation.backward_pass(output_activation.output,y) #gradient of loss/softmax
+        output_activation.backward_pass(output_activation.output,y_train) #gradient of loss/softmax
         output_layer.backward_pass(output_activation.dinputs) #gradient of output layer activation
-        hidden_activation2.backward_pass(output_layer.dinputs) #gradient of hidden activation
-        hidden_layer2.backward_pass(hidden_activation2.dinputs) #gradient of hidden layer
-        
-        hidden_activation.backward_pass(hidden_layer2.dinputs) #gradient of hidden activation
+        hidden_activation.backward_pass(output_layer.dinputs) #gradient of hidden activation
         hidden_layer.backward_pass(hidden_activation.dinputs) #gradient of hidden layer
         input_activation.backward_pass(hidden_layer.dinputs) #gradient of input activation function
         input_layer.backward_pass(input_activation.dinputs) #gradient of input activations
@@ -329,88 +329,108 @@ def naive_backprop(X,y,epochs,minibatch,learning_rate): #at this point, we are n
         optimizer.update_parameters(output_layer)
         
         #Calculate accuracy from output layer activations and targets
-        predictions = np.argmax(output_activation.output, axis=1)
-        if len(y.shape)==2:
-            y = np.argmax(y,axis=1)
-        accuracy = np.mean(predictions==y)
+        training_predictions = np.argmax(output_activation.output, axis=1)
+        if len(y_train.shape)==2:
+            y_train = np.argmax(y_train,axis=1)
+            train_accuracy = np.mean(training_predictions==y_train)
+        train_accuracy = np.mean(training_predictions==y_train)
+
+        #Validate the network --------------------------------------------------------------------
+
+        #select random rows of digit matrix
+        number_of_rows = X_test.shape[0]
+        random_indices = np.random.choice(number_of_rows, size=minibatch, replace=False)
+
+        #compute mini-batches for Gradient Descent
+        X_test = X_test[random_indices,:] 
+        y_test = y_test[random_indices]
+
+        #Forward pass for validation
+        input_layer.forward_pass(X_test)  #forward pass input layer
+        input_activation.forward_pass(input_layer.output) #forward pass input activation
+        hidden_layer.forward_pass(input_activation.output) #forward pass thru hidden
+        hidden_activation.forward_pass(hidden_layer.output) #forward pass thru hidden activation
+        output_layer.forward_pass(hidden_activation.output) #forward pass thru output activation
+        output_activation.forward_pass(output_layer.output,y_test)
+        
+        #Calculate accuracy from output layer activations and targets
+        test_predictions = np.argmax(output_activation.output, axis=1)
+        if len(y_test.shape)==2:
+            y_test = np.argmax(y_test,axis=1)
+            test_accuracy = np.mean(test_predictions==y_test)
+        test_accuracy = np.mean(test_predictions==y_test)
         
         #progress bar
-        progress_bar(epoch,epochs,loss,accuracy,key='backprop') #progress bar :)
+        progress_bar(epoch,epochs,train_accuracy,test_accuracy)
         sys.stdout.flush()
-        
-        #for plotting
-        loss_.append(loss)
-        accuracy_.append(accuracy)
-        epochs_.append(epoch)
-
-
-    # #plot input layer weights
-    # plt.figure(figsize = (12,7))
-    # plt.imshow(input_layer.weights, aspect='auto', interpolation='none',cmap='jet')
-    # plt.title("Strength of Edges between Input Features and First Hidden Layer")
-    # plt.xlabel("Neurons of First Hidden Layer")
-    # plt.ylabel("Input features of Input Vector")
-    # plt.colorbar()
-
-    #Draw cartoon of neural net
-    draw_neural_net(.1, .9, .1, .9, [12, 16, 16,10])
-
-    #plot hidden layer weights
-    plt.figure(figsize = (12,7))
-    plt.imshow(hidden_layer.weights, aspect='auto', interpolation='none',cmap='jet')           
-    plt.title("Strength of Edges between First and Second Hidden Layers")
-    plt.xlabel("Neurons of Second Hidden Layer")
-    plt.ylabel("Neurons of First Hidden Layer")
-    plt.colorbar()
-
-    #plot hidden layer weights
-    plt.figure(figsize = (12,7))
-    plt.imshow(hidden_layer2.weights, aspect='auto', interpolation='none',cmap='jet')           
-    plt.title("Strength of Edges between Second and Third Hidden Layers")
-    plt.xlabel("Neurons of Third Hidden Layer")
-    plt.ylabel("Neurons of Second Hidden Layer")
-    plt.colorbar()
     
-    #plot output layer weights
-    plt.figure(figsize = (12,7))
-    plt.imshow(output_layer.weights, aspect='auto', interpolation='none',cmap='jet')
-    plt.title("Strength of Edges between Third Hidden Layer and Output Layer")
-    plt.xlabel("Neurons of Output Layer")
-    plt.ylabel("Neurons of Third Hidden Layer")
-    plt.colorbar()
+        training_accuracy.append(train_accuracy)
+        testing_accuracy.append(test_accuracy)
+    
+    #plotting -----------------------------------------------------------------------------------------
+    
+    #visualize network
+    draw_neural_net(.15, .85, 0, 1, [64, 32, 5]) #each layer is cut in half for better visual
+    
+    #plot input layer
+    plt.figure(figsize=(12,7))
+    plt.subplot(1,3,1)
+    plt.imshow(input_layer.weights,cmap='jet')
+    plt.title(f"Input Layer Weights")
+    
+    #middle
+    plt.subplot(1,3,2)
+    plt.imshow(hidden_layer.weights,cmap='jet')
+    plt.title("Middle Hidden Layer Weights")
 
-    #normalize and plot loss / accuracy over time
-    np.arange(0,epochs)
-    loss_ = (loss_ - min(loss_))/(max(loss_) - min(loss_)) #normalize
-    accuracy_ = (accuracy_ - min(accuracy_))/(max(accuracy_) - min(accuracy_)) 
-    plt.figure(figsize = (12,7))
-    plt.title("Loss and Accuracy over Epochs of Gradient Descent")
+    #Plot output layer weights
+    plt.subplot(1,3,3)
+    plt.imshow(output_layer.weights,cmap='jet')
+    plt.title("Output Layer Weights")
+    
+
+    plt.subplots_adjust(wspace=0, hspace=0)
+    plt.setp(plt.gcf().get_axes(), xticks=[], yticks=[]);
+    plt.suptitle("Layer Edge Weights")
+
+    #plot some example digits from validation set
+    visualize_digits(X_test,y_test,test_predictions,test_accuracy)
+
+    #plot training and validation accuracy over epochs od SGD
+    epochs = np.arange(epochs)
+    plt.figure(figsize=(12,7))
+    plt.scatter(epochs,training_accuracy,c='red',s=3,label="Training Accuracy")
+    plt.scatter(epochs,testing_accuracy,c='blue',s=3,label="Validation Accuracy")
     plt.xlabel("Epoch")
-    plt.ylabel("Normalized Cost / Accuracy")
-
-    plt.scatter(epochs_,loss_,c='red',s=1,label="Network Loss")
-    plt.scatter(epochs_,accuracy_,c='blue',s=2,label="Classification Accuracy")
+    plt.ylabel("Accuracy")
+    plt.title("Training and Validation Accuracy over SGD")
     plt.legend()
-    
-    #Visualize Example digits
-    visualize_digits(X,y,predictions,accuracy)
-    print("\n\nDone! Final training accuracy:",100*round(accuracy,4))
+
+    #plot digit
+    plt.figure(figsize=(12,7))
+    plt.imshow(X_test[-1].reshape(28,28))
+    plt.title(f"Label: {y_test[-1]}")
+    plt.setp(plt.gcf().get_axes(), xticks=[], yticks=[]);
 
 
 #main - coordinate model
 def main():
     #Fetch training data --- reshape to row vectors for each digit
-    X = fetch_MNIST("http://yann.lecun.com/exdb/mnist/train-images-idx3-ubyte.gz")[0x10:].reshape((-1,784)) 
-    y = fetch_MNIST("http://yann.lecun.com/exdb/mnist/train-labels-idx1-ubyte.gz")[8:]      
+    X_train = fetch_MNIST("http://yann.lecun.com/exdb/mnist/train-images-idx3-ubyte.gz")[0x10:].reshape((-1,784)) 
+    y_train = fetch_MNIST("http://yann.lecun.com/exdb/mnist/train-labels-idx1-ubyte.gz")[8:]      
+    X_test = fetch_MNIST("http://yann.lecun.com/exdb/mnist/t10k-images-idx3-ubyte.gz")[0x10:].reshape((-1, 784))
+    y_test = fetch_MNIST("http://yann.lecun.com/exdb/mnist/t10k-labels-idx1-ubyte.gz")[8:]
+    
     #Model with backprop
-    naive_backprop(
-        X,y,
-        epochs=3500,
-        minibatch=2048,
-        learning_rate=0.005) 
+    minibatch_GD(
+        X_train,y_train,
+        X_test,y_test,
+        epochs=25000,
+        minibatch=10000,
+        learning_rate=0.00025) #20000 epochs, 10000 minibatch, learning = 0.005
     
     end = time.time()
-    print(f"Full Program runtime: {round((end-start),3)} s\n\n")
+    print(f"\n--Full Program runtime-- {round((end-start),3)} s\n\n")
 
 main()
 
