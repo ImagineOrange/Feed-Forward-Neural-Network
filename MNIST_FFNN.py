@@ -41,7 +41,7 @@ def visualize_digits(X,y,predictions,accuracy): #visualize some digits
             counter+=1      
     plt.suptitle(f"Sample Classifications from Test Dataset --- Final Test Accuracy: {100*round(accuracy,2)}%")
 
-def progress_bar(i,ceiling,train_accuracy,test_accuracy):
+def progress_bar(i,ceiling,train_accuracy,test_accuracy,learning_rate):
       barlength=25
       percentage = int(i/ceiling * 100) + 1
       num_hash = int(percentage/100 * barlength)
@@ -52,17 +52,18 @@ def progress_bar(i,ceiling,train_accuracy,test_accuracy):
       sys.stdout.write(
         f"\rTraining Progress: [{tally}{space}] {round(percentage,5)}% - ({i}/{ceiling}) - " 
         f"batch acc: {round(train_accuracy * 100,4)} % --- "
-        f"val acc: {round(test_accuracy * 100,4)} %  ")
+        f"val acc: {round(test_accuracy * 100,4)} % --- "
+        f"Decayed LR: {round(learning_rate,8)}     ")
 
 def draw_output(epochs,minibatch,learning_rate): #Draw network, give stats
     print("\n\nThis FFNN is chugging along to classify handwritten digits of the MNIST dataset. \
            \ndataset source: http://yann.lecun.com/exdb/mnist/ \
            \n\nFeed-forward Network Shape: 784 x 128 x 64 x 10 neurons: \n")
     print("Input        ···"+26*'x'+"···         784 features (pixels per img)")
-    print("Hidden 1     "+6*' '+20*'*'+12*" "+"   784 inputs, 128 neurons"+"")
-    print("Hidden 2               "+12*'*'+"                   128 inputs, 64 neurons")
-    print("Output       "+13*' '+6*'*'+15*' '+"        64 inputs, 10 neurons\n\
-        \nepochs =", epochs, ", batch size =",minibatch, ", learning_rate =",learning_rate,"\n")
+    print("Hidden 1     "+6*' '+20*'*'+12*" "+"   784 inputs per neuron, 128 neurons"+"")
+    print("Hidden 2               "+12*'*'+"                   128 inputs per neuron, 64 neurons")
+    print("Output       "+13*' '+6*'*'+15*' '+"        64 inputs per neuron, 10 neurons\n\
+        \nepochs =", epochs, ", batch size =",minibatch, ", learning rate =",learning_rate,"(decayed)\n")
     print("Training Algorithm: Batch Gradient Descent")
         
     #Fetch training data --- reshape to row vectors for each digit
@@ -250,16 +251,28 @@ class Activation_Softmax_Loss_CategoricalCrossentropy():
 #Stochastic Gradient Descent
 class Stochastic_Gradient_Descent:
     #Initialize the optimizer object and set default learning rate - (step size for SGD)
-    def __init__(self,Learning_rate):
+    def __init__(self,Learning_rate,decay):
         self.learning_rate = Learning_rate
+        self.current_learning_rate = Learning_rate
+        self.decay = decay
+        self.iterations = 0
+    #learning-rate decay - each iteration of SGD, learning rate will decrease if param passed
+    #Why? https://arxiv.org/abs/1908.01878
+    def pre_update_parameters(self):
+        if self.decay:
+           self.current_learning_rate = self.learning_rate * \
+                (1. / (1 + self.decay * self.iterations))
     #Update parameters 
     def update_parameters(self,layer):
-        layer.weights += -self.learning_rate * layer.dweights #multiply learning rate by final layer gradients
-        layer.biases += -self.learning_rate * layer.dbiases 
+        layer.weights += -self.current_learning_rate * layer.dweights #multiply learning rate by final layer gradients
+        layer.biases += -self.current_learning_rate * layer.dbiases 
+    #Call to iterate-up iterations
+    def post_update_parameters(self):
+        self.iterations += 1
 
     #################### - FFNN model and Training below - ####################
 
-def minibatch_GD(X_train,y_train,X_test,y_test,epochs,minibatch,learning_rate): #at this point, we are not splitting data into train/test
+def minibatch_GD(X_train,y_train,X_test,y_test,epochs,minibatch,learning_rate,decay):
     #draw console output
     draw_output(epochs,minibatch,learning_rate)
 
@@ -268,13 +281,13 @@ def minibatch_GD(X_train,y_train,X_test,y_test,epochs,minibatch,learning_rate): 
     np.random.shuffle(randomize)
     X_train = X_train[randomize]
     y_train = y_train[randomize]
-    #X_train = normalize(X_train)
+    X_train = normalize(X_train)
 
     randomize = np.arange(len(X_test))
     np.random.shuffle(randomize)
     X_test = X_test[randomize]
     y_test = y_test[randomize]
-    #X_test = normalize(X_test)
+    X_test = normalize(X_test)
 
     #init model layers
     input_layer = Layer_Dense(784,128) #input layer (first hidden)
@@ -287,12 +300,13 @@ def minibatch_GD(X_train,y_train,X_test,y_test,epochs,minibatch,learning_rate): 
     output_activation = Activation_Softmax_Loss_CategoricalCrossentropy()
    
     #init model optimizer function
-    optimizer = Stochastic_Gradient_Descent(learning_rate) #SGD - learning rate
+    optimizer = Stochastic_Gradient_Descent(learning_rate,decay) #SGD - learning rate decay
     
     #training----------------------------------------------------------------------------------
 
     training_accuracy = []
     testing_accuracy = []
+    learning_rate = []
 
     for epoch in range(epochs): #training loop for SGD 
         
@@ -323,10 +337,12 @@ def minibatch_GD(X_train,y_train,X_test,y_test,epochs,minibatch,learning_rate): 
         input_layer.backward_pass(input_activation.dinputs) #gradient of input activations
 
         #update layer parameters using gradients calculated during backprop
+        optimizer.pre_update_parameters()
         optimizer.update_parameters(input_layer) 
         optimizer.update_parameters(hidden_layer)
         optimizer.update_parameters(hidden_layer)
         optimizer.update_parameters(output_layer)
+        optimizer.post_update_parameters()
         
         #Calculate accuracy from output layer activations and targets
         training_predictions = np.argmax(output_activation.output, axis=1)
@@ -335,15 +351,7 @@ def minibatch_GD(X_train,y_train,X_test,y_test,epochs,minibatch,learning_rate): 
             train_accuracy = np.mean(training_predictions==y_train)
         train_accuracy = np.mean(training_predictions==y_train)
 
-        #Validate the network --------------------------------------------------------------------
-
-        #select random rows of digit matrix
-        number_of_rows = X_test.shape[0]
-        random_indices = np.random.choice(number_of_rows, size=minibatch, replace=False)
-
-        #compute mini-batches for Gradient Descent
-        X_test = X_test[random_indices,:] 
-        y_test = y_test[random_indices]
+        #Validate the network each iteration----------------------------------------------------------
 
         #Forward pass for validation
         input_layer.forward_pass(X_test)  #forward pass input layer
@@ -361,11 +369,12 @@ def minibatch_GD(X_train,y_train,X_test,y_test,epochs,minibatch,learning_rate): 
         test_accuracy = np.mean(test_predictions==y_test)
         
         #progress bar
-        progress_bar(epoch,epochs,train_accuracy,test_accuracy)
+        progress_bar(epoch,epochs,train_accuracy,test_accuracy,optimizer.current_learning_rate)
         sys.stdout.flush()
     
         training_accuracy.append(train_accuracy)
         testing_accuracy.append(test_accuracy)
+        learning_rate.append(optimizer.current_learning_rate)
     
     #plotting -----------------------------------------------------------------------------------------
     
@@ -376,7 +385,7 @@ def minibatch_GD(X_train,y_train,X_test,y_test,epochs,minibatch,learning_rate): 
     plt.figure(figsize=(12,7))
     plt.subplot(1,3,1)
     plt.imshow(input_layer.weights,cmap='jet')
-    plt.title(f"Input Layer Weights")
+    plt.title("Input Layer Weights")
     
     #middle
     plt.subplot(1,3,2)
@@ -388,29 +397,28 @@ def minibatch_GD(X_train,y_train,X_test,y_test,epochs,minibatch,learning_rate): 
     plt.imshow(output_layer.weights,cmap='jet')
     plt.title("Output Layer Weights")
     
-
     plt.subplots_adjust(wspace=0, hspace=0)
     plt.setp(plt.gcf().get_axes(), xticks=[], yticks=[]);
     plt.suptitle("Layer Edge Weights")
-
+    
     #plot some example digits from validation set
     visualize_digits(X_test,y_test,test_predictions,test_accuracy)
 
     #plot training and validation accuracy over epochs od SGD
+    
+    learning_rate = np.asarray(learning_rate)
+    learning_rate = (learning_rate - min(learning_rate))/\
+        (max(learning_rate) - min(learning_rate)) #normalize
+    
     epochs = np.arange(epochs)
     plt.figure(figsize=(12,7))
     plt.scatter(epochs,training_accuracy,c='red',s=3,label="Training Accuracy")
     plt.scatter(epochs,testing_accuracy,c='blue',s=3,label="Validation Accuracy")
+    plt.scatter(epochs,learning_rate,c='green',s=3,label="Learning Rate")
     plt.xlabel("Epoch")
     plt.ylabel("Accuracy")
     plt.title("Training and Validation Accuracy over SGD")
     plt.legend()
-
-    #plot digit
-    plt.figure(figsize=(12,7))
-    plt.imshow(X_test[-1].reshape(28,28))
-    plt.title(f"Label: {y_test[-1]}")
-    plt.setp(plt.gcf().get_axes(), xticks=[], yticks=[]);
 
 
 #main - coordinate model
@@ -425,9 +433,10 @@ def main():
     minibatch_GD(
         X_train,y_train,
         X_test,y_test,
-        epochs=25000,
-        minibatch=10000,
-        learning_rate=0.00025) #20000 epochs, 10000 minibatch, learning = 0.005
+        epochs=10000,
+        minibatch=20000,
+        learning_rate=0.05,
+        decay = 1e-4) #20000 epochs, 10000 minibatch, learning = 0.005
     
     end = time.time()
     print(f"\n--Full Program runtime-- {round((end-start),3)} s\n\n")
