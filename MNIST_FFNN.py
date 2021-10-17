@@ -41,7 +41,7 @@ def visualize_digits(X,y,predictions,accuracy): #visualize some digits
             counter+=1      
     plt.suptitle(f"Sample Classifications from Test Dataset --- Final Test Accuracy: {100*round(accuracy,2)}%")
 
-def progress_bar(i,ceiling,train_accuracy,test_accuracy,learning_rate):
+def progress_bar(i,ceiling,train_accuracy,test_accuracy,learning_rate,momentum):
       barlength=25
       percentage = int(i/ceiling * 100) + 1
       num_hash = int(percentage/100 * barlength)
@@ -51,20 +51,22 @@ def progress_bar(i,ceiling,train_accuracy,test_accuracy,learning_rate):
     
       sys.stdout.write(
         f"\rTraining Progress: [{tally}{space}] {round(percentage,5)}% - ({i}/{ceiling}) - " 
-        f"batch acc: {round(train_accuracy * 100,4)} % --- "
+        f"batch acc: {round(train_accuracy * 100,2)} % --- "
         f"val acc: {round(test_accuracy * 100,4)} % --- "
         f"Decayed LR: {round(learning_rate,8)}     ")
 
-def draw_output(epochs,minibatch,learning_rate): #Draw network, give stats
-    print("\n\nThis FFNN is chugging along to classify handwritten digits of the MNIST dataset. \
-           \ndataset source: http://yann.lecun.com/exdb/mnist/ \
-           \n\nFeed-forward Network Shape: 784 x 128 x 64 x 10 neurons: \n")
-    print("Input        ···"+26*'x'+"···         784 features (pixels per img)")
-    print("Hidden 1     "+6*' '+20*'*'+12*" "+"   784 inputs per neuron, 128 neurons"+"")
-    print("Hidden 2               "+12*'*'+"                   128 inputs per neuron, 64 neurons")
-    print("Output       "+13*' '+6*'*'+15*' '+"        64 inputs per neuron, 10 neurons\n\
-        \nepochs =", epochs, ", batch size =",minibatch, ", learning rate =",learning_rate,"(decayed)\n")
-    print("Training Algorithm: Batch Gradient Descent")
+def draw_output(epochs,minibatch,learning_rate,momentum): #Draw network, give stats
+    print(
+        f"\n\nThis FFNN is chugging along to classify handwritten digits of the MNIST dataset."
+        f"\ndataset source: http://yann.lecun.com/exdb/mnist/" 
+           f"\n\nFeed-forward Network Shape: 784 x 128 x 64 x 10 neurons:"
+        f"\n\nInput        ···"+26*'x'+"···         784 features (pixels per img)"
+        f"\nHidden 1     "+6*' '+20*'*'+12*" "+"   784 inputs per neuron, 128 neurons"+""
+        f"\nHidden 2               "+12*'*'+"                   128 inputs per neuron,  64 neurons"
+        f"\nOutput       "+13*' '+6*'*'+15*' '+"        64 inputs per neuron,  10 neurons\n\
+            \nepochs =", epochs, " \nbatch size =",minibatch, " \nlearning rate =",learning_rate,"(decayed)\
+            \nmomentum =",momentum,"\n"
+        f"Training Algorithm: Mini-batch Gradient Descent\n")
         
     #Fetch training data --- reshape to row vectors for each digit
     X = fetch_MNIST("http://yann.lecun.com/exdb/mnist/train-images-idx3-ubyte.gz")[0x10:].reshape((-1,784)) 
@@ -251,11 +253,13 @@ class Activation_Softmax_Loss_CategoricalCrossentropy():
 #Stochastic Gradient Descent
 class Stochastic_Gradient_Descent:
     #Initialize the optimizer object and set default learning rate - (step size for SGD)
-    def __init__(self,Learning_rate,decay):
+    def __init__(self,Learning_rate,decay,momentum):
         self.learning_rate = Learning_rate
         self.current_learning_rate = Learning_rate
         self.decay = decay
+        self.momentum = momentum
         self.iterations = 0
+        
     #learning-rate decay - each iteration of SGD, learning rate will decrease if param passed
     #Why? https://arxiv.org/abs/1908.01878
     def pre_update_parameters(self):
@@ -264,17 +268,49 @@ class Stochastic_Gradient_Descent:
                 (1. / (1 + self.decay * self.iterations))
     #Update parameters 
     def update_parameters(self,layer):
-        layer.weights += -self.current_learning_rate * layer.dweights #multiply learning rate by final layer gradients
-        layer.biases += -self.current_learning_rate * layer.dbiases 
-    #Call to iterate-up iterations
-    def post_update_parameters(self):
+        
+        if self.momentum:
+            #for first iteration:
+            if not hasattr(layer,'weight_momentums'):
+                layer.weight_momentums = np.zeros_like(layer.weights)
+                layer.bias_momentums = np.zeros_like(layer.biases)
+            #momentum contains a fraction of the gradient from the previous pass
+            #the portion of the previous pass is given by the 'momentum' parameter at function call
+            weight_updates = \
+                self.momentum * layer.weight_momentums - \
+                self.current_learning_rate * layer.dweights
+            layer.weight_momentums = weight_updates
+            
+            bias_updates = \
+                self.momentum * layer.bias_momentums - \
+                self.current_learning_rate * layer.dbiases
+            layer.bias_momentums = bias_updates
+        else:
+            layer.weights += -self.current_learning_rate * layer.dweights #multiply learning rate by final layer gradients
+            layer.biases += -self.current_learning_rate * layer.dbiases 
+        #update params with or without momentum
+        layer.weights += weight_updates
+        layer.biases += bias_updates
+        #iterate 
         self.iterations += 1
+
+
 
     #################### - FFNN model and Training below - ####################
 
-def minibatch_GD(X_train,y_train,X_test,y_test,epochs,minibatch,learning_rate,decay):
+
+#This model is an FFNN which utilizes SGD to learn to classify digits
+def MNIST_mini_batch_learning(
+                        X_train,y_train,
+                        X_test,y_test,
+                        epochs,
+                        minibatch,
+                        learning_rate,
+                        decay,
+                        momentum):
+    
     #draw console output
-    draw_output(epochs,minibatch,learning_rate)
+    draw_output(epochs,minibatch,learning_rate,momentum)
 
     #Shuffle Dataset
     randomize = np.arange(len(X_train))
@@ -300,7 +336,7 @@ def minibatch_GD(X_train,y_train,X_test,y_test,epochs,minibatch,learning_rate,de
     output_activation = Activation_Softmax_Loss_CategoricalCrossentropy()
    
     #init model optimizer function
-    optimizer = Stochastic_Gradient_Descent(learning_rate,decay) #SGD - learning rate decay
+    optimizer = Stochastic_Gradient_Descent(learning_rate,decay,momentum) #SGD - learning rate decay
     
     #training----------------------------------------------------------------------------------
 
@@ -310,26 +346,24 @@ def minibatch_GD(X_train,y_train,X_test,y_test,epochs,minibatch,learning_rate,de
 
     for epoch in range(epochs): #training loop for SGD 
         
-        #select random rows of digit matrix
-        number_of_rows = X_train.shape[0]
-        random_indices = np.random.choice(number_of_rows, size=minibatch, replace=False)
-
+        #select random rows of digit matrix - each iteration the model will train on a random batch
+        random_indices = np.random.choice(len(X_train),minibatch)
         #compute mini-batches for Gradient Descent
-        X_train = X_train[random_indices,:] 
-        y_train = y_train[random_indices]
+        X_train_ = X_train[random_indices,:] 
+        y_train_ = y_train[random_indices]
 
         #forward pass
-        input_layer.forward_pass(X_train)  #forward pass input layer
+        input_layer.forward_pass(X_train_)  #forward pass input layer
         input_activation.forward_pass(input_layer.output) #forward pass input activation
         hidden_layer.forward_pass(input_activation.output) #forward pass thru hidden
         hidden_activation.forward_pass(hidden_layer.output) #forward pass thru hidden activation
         output_layer.forward_pass(hidden_activation.output) #forward pass thru output activation
         
         #Calculate Loss
-        loss = output_activation.forward_pass(output_layer.output,y_train) #forward pass thru output layer
+        loss = output_activation.forward_pass(output_layer.output,y_train_) #forward pass thru output layer
         
         #Backward pass
-        output_activation.backward_pass(output_activation.output,y_train) #gradient of loss/softmax
+        output_activation.backward_pass(output_activation.output,y_train_) #gradient of loss/softmax
         output_layer.backward_pass(output_activation.dinputs) #gradient of output layer activation
         hidden_activation.backward_pass(output_layer.dinputs) #gradient of hidden activation
         hidden_layer.backward_pass(hidden_activation.dinputs) #gradient of hidden layer
@@ -340,16 +374,14 @@ def minibatch_GD(X_train,y_train,X_test,y_test,epochs,minibatch,learning_rate,de
         optimizer.pre_update_parameters()
         optimizer.update_parameters(input_layer) 
         optimizer.update_parameters(hidden_layer)
-        optimizer.update_parameters(hidden_layer)
         optimizer.update_parameters(output_layer)
-        optimizer.post_update_parameters()
         
         #Calculate accuracy from output layer activations and targets
         training_predictions = np.argmax(output_activation.output, axis=1)
-        if len(y_train.shape)==2:
-            y_train = np.argmax(y_train,axis=1)
-            train_accuracy = np.mean(training_predictions==y_train)
-        train_accuracy = np.mean(training_predictions==y_train)
+        if len(y_train_.shape)==2:
+            y_train_ = np.argmax(y_train_,axis=1)
+            train_accuracy = np.mean(training_predictions==y_train_)
+        train_accuracy = np.mean(training_predictions==y_train_)
 
         #Validate the network each iteration----------------------------------------------------------
 
@@ -369,7 +401,7 @@ def minibatch_GD(X_train,y_train,X_test,y_test,epochs,minibatch,learning_rate,de
         test_accuracy = np.mean(test_predictions==y_test)
         
         #progress bar
-        progress_bar(epoch,epochs,train_accuracy,test_accuracy,optimizer.current_learning_rate)
+        progress_bar(epoch,epochs,train_accuracy,test_accuracy,optimizer.current_learning_rate,momentum)
         sys.stdout.flush()
     
         training_accuracy.append(train_accuracy)
@@ -400,6 +432,8 @@ def minibatch_GD(X_train,y_train,X_test,y_test,epochs,minibatch,learning_rate,de
     plt.subplots_adjust(wspace=0, hspace=0)
     plt.setp(plt.gcf().get_axes(), xticks=[], yticks=[]);
     plt.suptitle("Layer Edge Weights")
+
+    plt.colorbar()
     
     #plot some example digits from validation set
     visualize_digits(X_test,y_test,test_predictions,test_accuracy)
@@ -412,9 +446,9 @@ def minibatch_GD(X_train,y_train,X_test,y_test,epochs,minibatch,learning_rate,de
     
     epochs = np.arange(epochs)
     plt.figure(figsize=(12,7))
-    plt.scatter(epochs,training_accuracy,c='red',s=3,label="Training Accuracy")
-    plt.scatter(epochs,testing_accuracy,c='blue',s=3,label="Validation Accuracy")
-    plt.scatter(epochs,learning_rate,c='green',s=3,label="Learning Rate")
+    plt.scatter(epochs,training_accuracy,c='red',s=2,label="Training Accuracy")
+    plt.scatter(epochs,testing_accuracy,c='blue',s=2,label="Validation Accuracy")
+    plt.scatter(epochs,learning_rate,c='green',s=2,label="Learning Rate")
     plt.xlabel("Epoch")
     plt.ylabel("Accuracy")
     plt.title("Training and Validation Accuracy over SGD")
@@ -430,13 +464,14 @@ def main():
     y_test = fetch_MNIST("http://yann.lecun.com/exdb/mnist/t10k-labels-idx1-ubyte.gz")[8:]
     
     #Model with backprop
-    minibatch_GD(
+    MNIST_mini_batch_learning(
         X_train,y_train,
         X_test,y_test,
-        epochs=10000,
-        minibatch=20000,
+        epochs=20000,
+        minibatch=32,
         learning_rate=0.05,
-        decay = 1e-4) #20000 epochs, 10000 minibatch, learning = 0.005
+        decay = 1e-4,
+        momentum=.8) #20000 epochs, 10000 minibatch, learning = 0.005
     
     end = time.time()
     print(f"\n--Full Program runtime-- {round((end-start),3)} s\n\n")
