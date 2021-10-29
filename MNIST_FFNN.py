@@ -19,7 +19,8 @@ start = time.time()
 def fetch_params(): #called to return parameters set by user for network initializtion 
     print(
         f"\n\nThis FFNN is used to classify handwritten digits of the MNIST dataset."
-        f"\ndataset source: http://yann.lecun.com/exdb/mnist/"
+        f"\ndataset source: http://yann.lecun.com/exdb/mnist/ "
+        f"\ndataset size: 60,000 training examples, 10,000 test examples"
 
         f"\n\n   Example Parameters: "
         f"\n   -------------------"
