@@ -1,6 +1,5 @@
 # Feed-Forward-Neural-Network
 Feed-Forward Neural Network from scratch using numpy. Classifies digits of the MNIST dataset
-Ethan Crouse        ethancrouse98@gmail.com
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 
 This is a feed-forward neural network written in python using only numpy and some accessory packages for visualization. 
