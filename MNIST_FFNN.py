@@ -6,6 +6,8 @@ Created on Wed Aug 18 23:52:52 2021
 @author: ecrouse
 """
 
+from sklearn.datasets import fetch_openml
+from sklearn.model_selection import train_test_split
 import numpy as np
 import matplotlib.pyplot as plt
 import sys
@@ -20,7 +22,7 @@ def fetch_params(): #called to return parameters set by user for network initial
     print(
         f"\n\nThis FFNN is used to classify handwritten digits of the MNIST dataset."
         f"\ndataset source: http://yann.lecun.com/exdb/mnist/ "
-        f"\ndataset size: 60,000 training examples, 10,000 test examples"
+        f"\ndataset size: 63,000 training examples, 7,000 test examples"
 
         f"\n\n   Example Parameters: "
         f"\n   -------------------"
@@ -41,7 +43,9 @@ def fetch_params(): #called to return parameters set by user for network initial
     list(int(num) for num in input("   Number of neurons in 3 hidden layers, separated by spaces: ").strip().split())[:3]
     ]
 
-    
+
+'''
+function below might be outdated... LeCun took the donwloads off
 def fetch_MNIST(url):
   import requests, gzip, os, hashlib
   fp = os.path.join("/tmp", hashlib.md5(url.encode('utf-8')).hexdigest())
@@ -54,6 +58,22 @@ def fetch_MNIST(url):
       f.write(dat)
   
   return np.frombuffer(gzip.decompress(dat), dtype=np.uint8).copy()
+'''
+
+def fetch_MNIST():
+    # Fetch the MNIST dataset
+    mnist = fetch_openml('mnist_784', version=1)
+    data, labels = mnist.data, mnist.target.astype('uint8')
+    # Reshape the data into (n_samples, 28, 28)
+    
+    # Split into train and test datasets
+    train_images, test_images, train_labels, test_labels = train_test_split(
+        data, labels, test_size=0.1, random_state=42
+    )
+
+    return np.array(train_images),np.array(train_labels), \
+           np.array(test_images),np.array(test_labels)
+
 
 def progress_bar(i,ceiling,train_accuracy,test_accuracy,learning_rate,momentum):
       barlength=25
@@ -517,11 +537,8 @@ def MNIST_mini_batch_learning(
 def main():
     #Fetch Model Parameters
     [epochs,minibatch,learning_rate,momentum,layers] = fetch_params()
-    #Fetch training data --- reshape to row vectors for each digit
-    X_train = fetch_MNIST("http://yann.lecun.com/exdb/mnist/train-images-idx3-ubyte.gz")[0x10:].reshape((-1,784)) 
-    y_train = fetch_MNIST("http://yann.lecun.com/exdb/mnist/train-labels-idx1-ubyte.gz")[8:]      
-    X_test = fetch_MNIST("http://yann.lecun.com/exdb/mnist/t10k-images-idx3-ubyte.gz")[0x10:].reshape((-1, 784))
-    y_test = fetch_MNIST("http://yann.lecun.com/exdb/mnist/t10k-labels-idx1-ubyte.gz")[8:]
+    #Fetch training data 
+    [X_train,y_train,X_test,y_test] = fetch_MNIST()
     
 
     #FFNN model with minibatch learnign via SGD and Backpropagation
