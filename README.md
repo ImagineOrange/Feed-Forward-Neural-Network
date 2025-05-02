@@ -23,4 +23,4 @@ Revisited after a few years and used code to classify a spiral dataset for the p
 
 Very cool looking!
 
-file:///Users/ethancrouse/Desktop/Feed-Forward-Neural-Network/decision_boundary.gif
+![decision_boundary](https://github.com/user-attachments/assets/80a2b0db-133d-4cad-8e28-4b24b4ea12fc)
