@@ -16,3 +16,11 @@ I used the book 'Neural Networks from Scratch in python' by Harrison Kingsley an
 
 
 The default 'example' parameters result in a 98.02% accuracy on the validation set on my machine.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+Added 4/25:
+Revisited after a few years and used code to classify a spiral dataset for the purpose of drawing decision boundaries.
+
+Very cool looking!
+
+file:///Users/ethancrouse/Desktop/Feed-Forward-Neural-Network/decision_boundary.gif
