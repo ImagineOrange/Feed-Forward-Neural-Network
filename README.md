@@ -1,3 +1,5 @@
+A project from 2021
+
 # Feed-Forward-Neural-Network
 Feed-Forward Neural Network from scratch using numpy. Classifies digits of the MNIST dataset
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
